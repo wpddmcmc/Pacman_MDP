@@ -34,293 +34,505 @@ import api
 import random
 import game
 import util
-import copy
-
-
-class Grid:
-
-    # this class is from solution to practical 5
-    #
-    # Note that it creates variables:
-    # grid:   an array that has one position for each element in the grid.
-    # width:  the width of the grid
-    # height: the height of the grid
-    #
-    # Grid elements are not restricted, so you can place whatever you
-    # like at each location. You just have to be careful how you
-    # handle the elements when you use them.
-    def __init__(self, width, height):
-        self.width = width
-        self.height = height
-        subgrid = []
-        for i in range(self.height):
-            row=[]
-            for j in range(self.width):
-                row.append(0)
-            subgrid.append(row)
-        self.grid = subgrid # create a height*width grid with zeros
-
-    # Set and get the values of specific elements in the grid.
-    # Here x and y are index of a state.
-    def setValue(self, x, y, value):
-        self.grid[y][x] = value
-
-    def getValue(self, x, y):
-        return self.grid[y][x]
-
-    # Return width and height to support functions that manipulate the
-    # values stored in the grid.
-    def getHeight(self):
-        return self.height
-
-    def getWidth(self):
-        return self.width
-
-    # Print the grid out.
-    def display(self):
-        for i in range(self.height):
-            for j in range(self.width):
-                # print grid elements with no newline
-                print self.grid[i][j],
-            # A new line after each line of the grid
-            print
-        # A line after the grid
-        print
-
-    # The display function prints the grid out upside down. This
-    # prints the grid out so that it matches the view we see when we
-    # look at Pacman.
-    def prettyDisplay(self):
-        for i in range(self.height):
-            for j in range(self.width):
-                # print grid elements with no newline
-                print self.grid[self.height - (i + 1)][j],
-            # A new line after each line of the grid
-            print
-        # A line after the grid
-        print
-
-
 
 class MDPAgent(Agent):
+    """Use Markov decision process (MDP) to nevigate pacman
+    6CCS3AIN Artificial Intelligence Reasoning and Decision Making Coursework
+    Author: Mingcong Chen           ID: K19007740
+    EMail: mingcong.chen@kcl.ac.uk
+    Date: 23/Nov/2019
+    URL: http://www.tgeek.tech/     GitHub: https://github.com/wpddmcmc
+    """
+    # Constructor: this gets run when we first invoke pacman.py
     def __init__(self):
-        pass
-     
-   
+        print "Starting up MDPAgent!" 
+        name = "Pacman"
+    # Gets run after an MDPAgent object is created and once there is
+    # game state to access.
+
+        # Lists to store useful informations
+        self.detected_position = []
+        self.foods_position = []
+        self.capsules_position = []
+        self.walls_position = []
+
     def registerInitialState(self, state):
-        print api.whereAmI(state)
+        print "Running MDPAgent Pacman!"
 
-        # get the size of layout.
-        cornertuple = api.corners(state)
-        self.width = cornertuple[3][0] + 1    # get the maximum row of the map by using the corners' coordinates
-        self.height = cornertuple[3][1] + 1   # get the maximum col of the map by using the corners' coordinates
-        print cornertuple[3]
-        
-        # create variables to store data
-        self.foodList = [] # information of foods in the map
-        self.wallList = [] # information of wall in the map
-        self.capsuleList = [] # information of 4 capsules in the map
-        self.visited = [] # store states pacman has visited
+    # This is what gets run in between multiple games
+    def final(self, state):
+        print "Looks like the game just ended!"
 
-        # Create a grid according to the height and width of the data from api.py and fill it with 0s
-        self.grid = {}
-        for x in range(self.width):  # the horizontal size
-             for y in range(self.height):# the vertical size
-                 self.grid[(x,y)] = 0
-#
+        # Clear all storage data before next time run
+        self.detected_position = []
+        self.foods_position = []
+        self.capsules_position = []
+        self.walls_position = []
+	
+    def mapSize(self, state):
+        """Get the size of layout.
 
-    def createValueGrid(self, state): 
-        # This function assigns value to each cell depending on the object
+        Calculate the maximum of row and col of the map by using the corners' coordinates
 
-        # Get the tuple of pacman, food, capsule, ghost using api
-        self.agentstate = api.whereAmI(state) # return state where pacman currently is 
-        food = api.food(state) # return state where food currently is 
-        capsule = api.capsules(state)
-        self.ghostList = api.ghosts(state) 
-        wall = api.walls(state)
+        Args:
+            state: The state of an agent (configuration, speed, scared, etc).
 
-         # add new food,capsle,wall coordinate to self.xxxx[]
-        for f in food:
-            if f not in self.foodList:  
-                self.foodList.append(f) 
-        for f in capsule:
-            if f not in self.capsuleList:
-                self.capsuleList.append(f)
-        for f in wall:
-            if f not in self.wallList:
-                self.wallList.append(f)
+        Returns:
+            The maximum index of row and maximum index of col
+        """
+        # unzip corners tuple to two list [col indexs] [row indexs]
+        # and then zip two list to tuple [(col indexs)(row indexs)]
+        corners = zip(*(api.corners(state)))   
+        # return the maximum col index and row index
+        return max(corners[0]), max(corners[1])
 
-        # Create a list to record the place which pacman already visited
-        if self.agentstate not in self.visited:
-            self.visited.append(self.agentstate)
+    def mapUpdate(self, state):
+        """Update the value map after once move
 
-        # Assign a reward to each state depending on the object on it
+        Args:
+            state: The state of an agent (configuration, speed, scared, etc).
 
-        for i in self.foodList:
-            self.grid[i] = 5  # make value on place where has food to 5
-            if i in self.visited:
-                self.grid[i] = 0  # change foods value on place visited to 0
-        
-        for i in self.capsuleList:
-            self.grid[i] = 7 # make value on place where has capsule to 7
-            if i in self.visited:
-                self.grid[i] = 0 # change capsule value on place visited to 0
-        
-        for g in self.ghostList:
-            self.grid[int(g[0]),int(g[1])] = -10 # make value on place where has ghost to -10
-        
-        for i in self.wallList: # assign 'wall' to cell where has a wall
-            self.grid[i] = 'wall'
-
- 
-    def getUtility(self, position, grid):
-        # This function calculates the utility for each cell and returns the maximum utility with its direction
-        # initialize utility dictionary
-        utility = {'north': 0, 'east':0, 'south':0, 'west':0} #
-
-        pacman = grid[(position[0],position[1])] #define where pacman currently is
-        north = grid[(position[0],position[1]+1)]# define the direction change in state of pacman
-        east = grid[(position[0]+1,position[1])]
-        south = grid[(position[0],position[1]-1)]
-        west = grid[(position[0]-1,position[1])]
-
-        # send utilities to a temporal variables utility_xx
-
-        # If the adjacent cell is not a wall, use the value of that cell
-        # If it is a wall, use the value of the current cell
-
-        # north
-        if north != 'wall': # If north cell is not a wall, use the value of north cell
-            utility_north = north * api.directionProb
-        else: # If north cell is a wall, use the value of pacman current state
-            utility_north = pacman * api.directionProb
-
-        # If west cell is not a wall, 
-        #  the change of want to head west but go to north by mistake is (1-api.directionProb)/2
-        if west != 'wall':  
-            utility_north += west * (1-api.directionProb)/2
-        # If west cell is a wall, pacman will stay 
-        else:
-            utility_north += pacman * (1-api.directionProb)/2
-
-        if east != 'wall':
-            utility_north += east * (1-api.directionProb)/2
-        else:
-            utility_north += pacman * (1-api.directionProb)/2
-        utility['north'] = utility_north
-
-        # south
-        if south != 'wall':
-            utility_south = south * api.directionProb
-        else:
-            utility_south = pacman * api.directionProb
-        if west != 'wall':
-            utility_south += west * (1-api.directionProb)/2
-        else:
-            utility_south += pacman * (1-api.directionProb)/2
-        if east != 'wall':
-            utility_south += east * (1-api.directionProb)/2
-        else:
-            utility_south += pacman * (1-api.directionProb)/2
-        utility['south'] = utility_south
-
-        # east
-        if east != 'wall':
-            utility_east = east * api.directionProb
-        else:
-            utility_east = pacman * api.directionProb
-        if north != 'wall':
-            utility_east += north * (1-api.directionProb)/2
-        else:
-            utility_east += pacman * (1-api.directionProb)/2
-        if south != 'wall':
-            utility_east += south * (1-api.directionProb)/2
-        else:
-            utility_east += pacman * (1-api.directionProb)/2
-        utility['east'] = utility_east
-
-        # west
-        if west != 'wall':
-            utility_west = west * api.directionProb
-        else:
-            utility_west = pacman * api.directionProb
-        if north != 'wall':
-            utility_west += north * (1-api.directionProb)/2
-        else:
-            utility_west += pacman * (1-api.directionProb)/2
-        if south != 'wall':
-            utility_west += south * (1-api.directionProb)/2
-        else:
-            utility_west += pacman * (1-api.directionProb)/2
-        utility['west'] = utility_west
-
-        # Return maximum utility and its direction
-        max_utility = max(utility.values())
-        direction = list (utility.keys()) [list (utility.values()).index(max_utility)]
-        return utility
-    
-
-    def valueIteration(self, state):
-        # This function runs value iteration and calculate the utility of each
-        # cells which is not included in excludeList
-
-        # Get excludeList
-        update = []
+        Returns:
+            The new value map
+        """
+        # Get the new information from pacman
         food = api.food(state)
-        for g in self.ghostList:
-            for i in range(5):
-                for j in range(5):
-                    if (int(g[0])+i, int(g[1])+j) not in self.ghostList and (int(g[0])+i, int(g[1]+j)) not in update:
-                        update.append((int(g[0])+i, int(g[1])+j))
-                    if (int(g[0])+i, int(g[1])-j) not in self.ghostList and (int(g[0])+i, int(g[1])-j) not in update:
-                        update.append((int(g[0])+i, int(g[1])-j))
-                    if (int(g[0])-i, int(g[1])+j) not in self.ghostList and (int(g[0])-i, int(g[1])+j) not in update:
-                        update.append((int(g[0])-i, int(g[1])+j))
-                    if (int(g[0])-i, int(g[1])-j) not in self.ghostList and (int(g[0])-i, int(g[1])-j) not in update:
-                        update.append((int(g[0])-i, int(g[1])-j))
+        walls = api.walls(state)
+        capsules = api.capsules(state)
+        ghosts = api.ghosts(state)
+        pacman = api.whereAmI(state)
+
+        # If the coordinate pacman not visited before, then store it in to list
+        if pacman not in self.detected_position:
+            self.detected_position.append(pacman)
+
+        # If the food not be ate before, then store it in to list
+        for n in food:
+            if n not in self.foods_position:
+                self.foods_position.append(n)
+
+        # If the capsules not be ate before, then store it in to list
+        for n in capsules:
+            if n not in self.capsules_position:
+                self.capsules_position.append(n)
+
+        # If the wall not be seen before, then store it in to list
+        for n in walls:
+            if n not in self.walls_position:
+                self.walls_position.append(n)
+
+        # The value map dictionariy
+        # The value of foods is 5
+        # The value of capsules is 5
+        # The value of walls is -5 (but will not be used)
+        updated_map = {}
+        updated_map.update(dict.fromkeys(self.foods_position, 5))
+        updated_map.update(dict.fromkeys(self.capsules_position, 5))
+        updated_map.update(dict.fromkeys(self.walls_position, -5))
+
+        edge = self.mapSize(state)  # get the size of the map
+
+        # Update the value map and fill the value map with 0
+        # The unknow positions (pacman cannot see) will be set to 0
+        for i in range(edge[0]):
+            for j in range(edge[1]):
+                if (i, j) not in updated_map.keys():
+                    updated_map[(i,j)]=0
+        # If the food was eatn update with 0
+        for n in self.foods_position:
+            if n in self.detected_position:
+                updated_map[n] = 0
+        # If the capsules was eatn update with 0
+        for n in self.capsules_position:
+            if n in self.detected_position:
+                updated_map[n] = 0
+        # Set the position of ghosts to -100
+        if ghosts:
+            for g in ghosts:
+                # Tthe ghosts is in another thread, there might be float number
+                updated_map[(round(g[0]),round(g[1]))] = -100
         
-   
-        excludeList = []
+        return updated_map
+                            
+    def Iteration(self,state,map,map_type):
+        """Use Bellman equation to iterate to update the value map
+
+        Args:
+            state: The state of an agent (configuration, speed, scared, etc).
+            map: The value map before update
+            map_type: the layout- medium one or small one
+
+        Returns:
+            The value map after updated by using Bellman function
+        """
+        # Parameters of Bellman equation
+        reward = -1     # reward for every state
+        gama = 0.8      # discount factor
+
+        # Get new informations from pacman
+        ghosts = api.ghosts(state)
+        food = api.food(state)
+        capsules = api.capsules(state)
+        walls = api.walls(state)
+
+        # The list hold the coordinate that near the ghost (whithin 5 steps in 
+        # medium class and 3 steps in small class). The coordinate stored in 
+        # the list need to be update by Bellman equation.
+        near_ghost = []
+        
+        # And a nagtive value will be set to the near ghost coordinate to make
+        # pacman stay away the areas. The value is -10*(6-distance) with ghost for
+        # medium class if within 3 steps and -15*(3-distance) with ghost for small
+        # class if within 2 steps.
+
+        # For medium class
+        if map_type=='medium':
+            for g in ghosts:
+                # The ghosts is in another thread, there might be float number
+                g_int = (round(g[0]),round(g[1]))
+                # did the value update passed a wall? 0-No 1-Yes.
+                # If there is a wall between the position and ghost
+                # the value will not be set if the position is not at same side of the wall 
+                walls_flag = [0,0,0,0,0,0,0,0]  # 0-right, 1- left, 2- up, 3-down, 4-up right, 5- up left, 6- down right, 7- down left
+                for i in range(5):
+                    # right
+                    near_ghost_position = (int(g_int[0]+i), int(g_int[1]))
+                    # set nagetive value
+                    if i <=3 and near_ghost_position not in walls and near_ghost_position not in ghosts and near_ghost_position not in near_ghost and walls_flag[0] == 0:
+                        map[near_ghost_position] = -10*(6-i)  
+                        if near_ghost_position in walls:
+                            walls_flag[0] = 1
+
+                    # left
+                    near_ghost_position = (int(g_int[0]-i), int(g_int[1]))
+                    # set nagetive value
+                    if i <= 3 and near_ghost_position not in walls and near_ghost_position not in ghosts and near_ghost_position not in near_ghost and walls_flag[0] == 0:
+                        map[near_ghost_position] = -10*(6-i)
+                        if near_ghost_position in walls:
+                            walls_flag[1] = 1
+
+                    # up
+                    near_ghost_position = (int(g_int[0]), int(g_int[1])+i)
+                    # set nagetive value
+                    if i <= 3 and near_ghost_position not in walls and near_ghost_position not in ghosts and near_ghost_position not in near_ghost and walls_flag[0] == 0:
+                        map[near_ghost_position] = -10*(6-i) 
+                        if near_ghost_position in walls:
+                            walls_flag[2] = 1
+
+                    # down
+                    near_ghost_position = (int(g_int[0]), int(g_int[1])-i)
+                    # set nagetive value
+                    if i <= 3 and near_ghost_position not in walls and near_ghost_position not in ghosts and near_ghost_position not in near_ghost and walls_flag[0] == 0:
+                        map[near_ghost_position] = -10*(6-i) 
+                        if near_ghost_position in walls:
+                            walls_flag[3] = 1
+
+                    # up right
+                    near_ghost_position = (int(g_int[0]+i), int(g_int[1]+i))
+                    # set nagetive value
+                    if i <= 3 and near_ghost_position not in walls and near_ghost_position not in ghosts and near_ghost_position not in near_ghost and walls_flag[0] == 0:
+                        map[near_ghost_position] = -10*(6-i) 
+                        if near_ghost_position in walls:
+                            walls_flag[4] = 1
+
+                    # up left
+                    near_ghost_position = (int(g_int[0]-i), int(g_int[1]+i))
+                    # set nagetive value
+                    if i <= 3 and near_ghost_position not in walls and near_ghost_position not in ghosts and near_ghost_position not in near_ghost and walls_flag[0] == 0:
+                        map[near_ghost_position] = -10*(6-i) 
+                        if near_ghost_position in walls:
+                            walls_flag[5] = 1
+                    # down right
+                    near_ghost_position = (int(g_int[0]+i), int(g_int[1]-i))
+                    # set nagetive value
+                    if i <= 3 and near_ghost_position not in walls and (near_ghost_position) not in ghosts and near_ghost_position not in near_ghost and walls_flag[0] == 0:
+                        map[near_ghost_position] = -10*(6-i) 
+                        if near_ghost_position in walls:
+                            walls_flag[6] = 1
+
+                    # down left
+                    near_ghost_position = (int(g_int[0]-i), int(g_int[1]-i))
+                    # set nagetive value
+                    if i <= 3 and near_ghost_position not in walls and (near_ghost_position) not in ghosts and near_ghost_position not in near_ghost and walls_flag[0] == 0:
+                        map[near_ghost_position] = -10*(6-i) 
+                        if near_ghost_position in walls:
+                            walls_flag[7] = 1
+
+                    # position need to be updated
+                    for j in range(5):
+                        near_ghost_position = (int(g_int[0]+i), int(g_int[1]+j))
+                        if near_ghost_position not in near_ghost and walls_flag[0] == 0:
+                            near_ghost.append(near_ghost_position)
+                        near_ghost_position = (int(g_int[0]+i), int(g_int[1]-j))
+                        if near_ghost_position not in near_ghost and walls_flag[0] == 0:
+                            near_ghost.append(near_ghost_position)
+                        near_ghost_position = (int(g_int[0]-i), int(g_int[1]+j))
+                        if near_ghost_position not in near_ghost and walls_flag[0] == 0:
+                            near_ghost.append(near_ghost_position)
+                        near_ghost_position = (int(g_int[0]-i), int(g_int[1]-j))
+                        if near_ghost_position not in near_ghost and walls_flag[0] == 0:
+                            near_ghost.append(near_ghost_position)
+
+        # For small class
+        else:
+            for g in ghosts:
+                # The ghosts is in another thread, there might be float number
+                g_int = (round(g[0]),round(g[1]))
+                walls_flag = [0,0,0,0,0,0,0,0]      
+                for i in range(3):
+                    # right
+                    near_ghost_position = (int(g_int[0]+i), int(g_int[1]))
+                    if near_ghost_position not in near_ghost and walls_flag[0] == 0:
+                        near_ghost.append(near_ghost_position)
+                        # set nagetive value
+                        if i <=3 and near_ghost_position not in walls and near_ghost_position not in ghosts:
+                            map[near_ghost_position] = -10*(3-i)  
+                        if near_ghost_position in walls:
+                            walls_flag[0] = 1
+                    # left
+                    near_ghost_position = (int(g_int[0]-i), int(g_int[1]))
+                    if near_ghost_position not in near_ghost and walls_flag[1] == 0:
+                        near_ghost.append(near_ghost_position)
+                        # set nagetive value
+                        if i <= 3 and near_ghost_position not in walls and near_ghost_position not in ghosts:
+                            map[near_ghost_position] = -10*(3-i)
+                        if near_ghost_position in walls:
+                            walls_flag[1] = 1
+                    # up
+                    near_ghost_position = (int(g_int[0]), int(g_int[1])+i)
+                    if near_ghost_position not in near_ghost and walls_flag[2] == 0:
+                        near_ghost.append(near_ghost_position)
+                        # set nagetive value
+                        if i <= 3 and near_ghost_position not in walls and near_ghost_position not in ghosts:
+                            map[near_ghost_position] = -10*(3-i) 
+                        if near_ghost_position in walls:
+                            walls_flag[2] = 1
+                    # down
+                    near_ghost_position = (int(g_int[0]), int(g_int[1])-i)
+                    if near_ghost_position not in near_ghost and walls_flag[3] == 0:
+                        near_ghost.append(near_ghost_position)
+                        # set nagetive value
+                        if i <= 3 and near_ghost_position not in walls and near_ghost_position not in ghosts:
+                            map[near_ghost_position] = -10*(3-i) 
+                        if near_ghost_position in walls:
+                            walls_flag[3] = 1
+                    # up right
+                    near_ghost_position = (int(g_int[0]+i), int(g_int[1]+i))
+                    if near_ghost_position not in near_ghost and walls_flag[4] == 0:
+                        near_ghost.append(near_ghost_position)
+                        # set nagetive value
+                        if i <= 3 and near_ghost_position not in walls and near_ghost_position not in ghosts:
+                            map[near_ghost_position] = -10*(3-i) 
+                        if near_ghost_position in walls:
+                            walls_flag[4] = 1
+                    # up left
+                    near_ghost_position = (int(g_int[0]-i), int(g_int[1]+i))
+                    if near_ghost_position not in near_ghost and walls_flag[5] == 0:
+                        near_ghost.append(near_ghost_position)
+                        # set nagetive value
+                        if i <= 3 and near_ghost_position not in walls and near_ghost_position not in ghosts:
+                            map[near_ghost_position] = -10*(3-i) 
+                        if near_ghost_position in walls:
+                            walls_flag[5] = 1
+                    # down right
+                    near_ghost_position = (int(g_int[0]+i), int(g_int[1]-i))
+                    if near_ghost_position not in near_ghost and walls_flag[6] == 0:
+                        near_ghost.append(near_ghost_position)
+                        # set nagetive value
+                        if i <= 3 and near_ghost_position not in walls and (near_ghost_position) not in ghosts:
+                            map[near_ghost_position] = -10*(3-i) 
+                        if near_ghost_position in walls:
+                            walls_flag[6] = 1
+                    # down left
+                    near_ghost_position = (int(g_int[0]-i), int(g_int[1]-i))
+                    if near_ghost_position not in near_ghost and walls_flag[7] == 0:
+                        near_ghost.append(near_ghost_position)
+                        # set nagetive value
+                        if i <= 3 and near_ghost_position not in walls and (near_ghost_position) not in ghosts:
+                            map[near_ghost_position] = -10*(3-i) 
+                        if near_ghost_position in walls:
+                            walls_flag[7] = 1   
+            
+        # If there is food and not near the ghost. The coordinate no need to update
+        noupdate = []
         for f in food:
-            if f not in excludeList and f not in update:
-                excludeList.append(f)
+            if f not in near_ghost:
+                noupdate.append(f)
 
-        # This function creates a list of cells which must be excluded from
-        # the utility calculations
+        # Iteration times for medium class is 40, 20 for small class
+        if map_type=='medium':
+            loop_count = 40
+        else:
+            loop_count = 20
 
-        # Exclude  walls ghosts and from calculation
-        # Run value iteration
-        for i in range(40):
-            old_grid = self.grid.copy()
-            for x in range(self.width-1):
-                for y in range(self.height-1):
-                    if (x,y) not in excludeList and (x,y) not in self.wallList and (x,y) not in self.ghostList:
-                        utility = self.getUtility((x,y), old_grid)
-                        self.grid[(x,y)] = -1 + 0.7* max(utility.values()) #Bellman Equation
-                    
+        edge = self.mapSize(state)
+        while loop_count>0:
+            temp_map = map   
+            # avoid the coordinate out of map range
+            for i in range(edge[0]):
+                for j in range(edge[1]):
+                    # Iterate the value map by Bellman equation if needed
+                    if (i,j) not in walls and (i,j) not in noupdate and (i,j) not in ghosts and (i,j) not in capsules:
+                        utilities = self.utility_caculation((i,j),temp_map)
+                        # Take the maximum utility of four directions as the utility at (i,j)
+                        map[(i,j)] = reward + gama*max(utilities.values())
+            loop_count -=1
+        return map
 
+    def utility_caculation(self,position,map):
+        """Calculate the utility
+
+        Args:
+            position: the coodrite need to update the utility
+            map: The value map before update
+
+        Returns:
+            The utility at position
+        """
+        # The utility of four directions
+        utiluties = {"north_u": 0.0, "south_u": 0.0, "east_u": 0.0, "west_u": 0.0}
+        # Next position
+        north = (position[0],position[1]+1)
+        south = (position[0],position[1]-1)
+        west = (position[0]-1,position[1])
+        east = (position[0]+1,position[1])
+        stay = position
+
+        # policy probability: pi(A/S) = {0.7,0.1,0.1,0.1}
+
+        # If there is a wall at the move directions, use the utility of staying
+        # If not a wall, use the utility next position
+
+        # If move to north
+        if map[north] != -5:
+            north_u = (0.7*map[north])
+        else:
+            north_u = (0.7*map[stay])
+        if map[east] != -5:
+            north_u += (0.1*map[east])
+        else:
+            north_u += (0.1*map[stay])
+        if map[west] != -5:
+            north_u += (0.1*map[west])
+        else:
+            north_u += (0.1*map[stay])
+        if map[south] != -5:
+            north_u += (0.1*map[south])
+        else:
+            north_u += (0.1*map[south])
+
+        utiluties["north_u"] = north_u
+        
+        # If move to south
+        if map[south] != -5:
+            south_u = (0.7*map[south])
+        else:
+            south_u = (0.7*map[stay])
+        if map[east] != -5:
+            south_u += (0.1*map[east])
+        else:
+            south_u += (0.1*map[stay])
+        if map[west] != -5:
+            south_u += (0.1*map[west])
+        else:
+            south_u += (0.1*map[stay])
+        if map[north] != -5:
+            south_u += (0.1*map[north])
+        else:
+            south_u += (0.1*map[north])
+
+        utiluties["south_u"] = south_u
+
+        # If move to east
+        if map[east] != -5:
+            east_u = (0.7*map[east])
+        else:
+            east_u = (0.7*map[stay])
+        if map[north] != -5:
+            east_u += (0.1*map[north])
+        else:
+            east_u += (0.1*map[stay])
+        if map[south] != -5:
+            east_u += (0.1*map[south])
+        else:
+            east_u += (0.1*map[stay])
+        if map[west] != -5:
+            east_u += (0.1*map[west])
+        else:
+            east_u += (0.1*map[west])
+
+        utiluties["east_u"] = east_u
+
+        # If move to west
+        if map[west] != -5:
+            west_u = (0.7*map[west])
+        else:
+            west_u = (0.7*map[stay])
+        if map[north] != -5:
+            west_u += (0.1*map[north])
+        else:
+            west_u += (0.1*map[stay])
+        if map[south] != -5:
+            west_u += (0.1*map[south])
+        else:
+            west_u += (0.1*map[stay])
+        if map[east] != -5:
+            west_u += (0.1*map[east])
+        else:
+            west_u += (0.1*map[east])
+
+        utiluties["west_u"] = west_u
+
+        return utiluties
+
+    def whichToMove(self,state,map):
+        """Get the maximum utility to make move decision
+
+        Args:
+            state: The state of an agent (configuration, speed, scared, etc).
+            map: The value map before update
+
+        Returns:
+            The move direction decision
+        """
+        pacman = api.whereAmI(state)    # Get pacman position
+        utilities = self.utility_caculation(pacman,map);    # Update utility of pacman postion
+        # map[pacman] = max(utilities.values())       # Update value map (only use for debug)
+        move_desision = max(zip(utilities.values(),utilities.keys()))    # Get the maximum utility and it's ditection
+        
+        # Return the dicision movement diriction
+        if move_desision[1] == 'north_u':
+            return Directions.NORTH
+        if move_desision[1] == 'south_u':
+            return Directions.SOUTH
+        if move_desision[1] == 'west_u':
+            return Directions.WEST
+        if move_desision[1] == 'east_u':
+            return Directions.EAST
+        
     def getAction(self, state):
-        # Get the list of legal actions
+        """Get Action of pacman
+
+        Args:
+            state: The state of an agent (configuration, speed, scared, etc).
+        """
+        # Get the actions we can try, and remove "STOP" if that is one of them.
         legal = api.legalActions(state)
+        if Directions.STOP in legal:
+            legal.remove(Directions.STOP)
 
-        # Assign the initial value to the grid
-        self.createValueGrid(state)
+        cols,rows = self.mapSize(state) # Get the layout size
+        # Judge the layout type medium or small
+        map_type = 'medium'
+        if cols >= 10 and rows >= 10:   
+            map_type = 'medium'
+        else:
+            map_type = 'small'
 
-        # Run value iteration
-        self.valueIteration(state)
-
-        # Run calcUtility() once and get the direction with maximum utility
-        utility = self.getUtility(self.agentstate, self.grid)
-        max_utility = max(utility.values())
-        direction = list (utility.keys()) [list (utility.values()).index(max_utility)]
-
-        # makemove by using function makeMove()
-        if direction == "north":
-            return api.makeMove(Directions.NORTH ,legal)
-        if direction == "east":
-            return api.makeMove(Directions.EAST ,legal)
-        if direction == "south":
-            return api.makeMove(Directions.SOUTH ,legal)
-        if direction == "west":
-            return api.makeMove(Directions.WEST ,legal)
- 
+        # Update value map after pacman moved
+        updated_map = self.mapUpdate(state)
+        # Update value map with iteration
+        updated_map = self.Iteration(state,updated_map,map_type)
+    
+        # Make move
+        return api.makeMove(self.whichToMove(state,updated_map), legal)
